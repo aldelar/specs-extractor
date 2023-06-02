@@ -1,0 +1,23 @@
+name: specs-extractor
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+- python
+- pip
+- pip:
+  - azure-ai-formrecognizer
+  - ipykernel
+  - matplotlib
+  - num2words
+  - openai
+  - pandas
+  - plotly
+  - pypdf
+  - python-dotenv
+  - semantic-kernel
+  - sentence-transformers
+  - scikit-learn
+  - scipy
+  - torch
+  - transformers

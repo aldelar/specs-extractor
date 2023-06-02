@@ -1,3 +1,8 @@
+# specs folder
+specs
+system_message.txt
+few_shots.txt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
