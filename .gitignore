@@ -1,7 +1,7 @@
 # specs folder
 specs
-system_message.txt
-few_shots.txt
+prompt/system_message.txt
+prompt/few_shots.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
