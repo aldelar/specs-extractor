@@ -10,9 +10,11 @@ Pattern to process parts of a large PDF document into a predefined specific stru
 
 ## Usage
 
-Create a 'specs' directory in the root level of this repository and place the PDFs you want to extract in that folder.
+1. Create a 'specs' directory in the root level of this repository and place the PDFs you want to extract in that folder.
 
-Then run the following commands to setup the environment and run the extraction script:
+2. Copy src/.env.template to src/.env and update the values to match your environment.
+
+3. Run the following commands to setup the environment and run the extraction script:
 
 ```bash
 conda env create -f conda.yml
