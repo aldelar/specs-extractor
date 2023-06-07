@@ -29,33 +29,6 @@ document_analysis_client = DocumentAnalysisClient(endpoint=AZURE_FORM_RECOGNIZER
 with open("prompts/system_message.txt", "r") as system_message_file:
 	SYSTEM_MESSAGE = system_message_file.read()
 
-# defining a function to create the prompt from the system message and the conversation messages
-def create_conversation_prompt(system_message, messages):
-    prompt = system_message
-    for message in messages:
-        prompt += f"\n<|im_start|>{message['sender']}\n{message['text']}\n<|im_end|>"
-    prompt += "\n<|im_start|>assistant\n"
-    return prompt
-
-# extract specs from doc
-def text_to_specs(doc_text):
-	# defining the user input and the system message
-	system_message = f"<|im_start|>system\n{SYSTEM_MESSAGE}\n<|im_end|>"
-	messages = [{"sender": "user", "text": doc_text}]
-	prompt = create_conversation_prompt(system_message, messages)
-	#print(f"Prompt:\n{prompt}")
-	response = openai.Completion.create(
-		engine=OPENAI_CHAT_DEPLOYMENT,
-		prompt=prompt,
-		temperature=0.7,
-		max_tokens=OPENAI_CHAT_DEPLOYMENT_OUTPUT_MAX_TOKEN_SIZE,
-		top_p=0.95,
-		frequency_penalty=0,
-		presence_penalty=0,
-		stop=['<|im_end|>']
-	)
-	return response['choices'][0]['text']
-
 # process pdf to extract text:
 # - split docs into sub-docs
 # - detect metadata (header/footer/etc.) and remove from text
@@ -115,6 +88,33 @@ def process_pdf(specs_folder_name, spec_pdf_file_name):
 				for paragraph in document_content_paragraphs:
 					spec_paragraphs_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
 			print(f"  -> content paragraphs detected: {len(document_content_paragraphs)}")
+
+# defining a function to create the prompt from the system message and the conversation messages
+def create_conversation_prompt(system_message, messages):
+    prompt = system_message
+    for message in messages:
+        prompt += f"\n<|im_start|>{message['sender']}\n{message['text']}\n<|im_end|>"
+    prompt += "\n<|im_start|>assistant\n"
+    return prompt
+
+# extract specs from doc
+def text_to_specs(doc_text):
+	# defining the user input and the system message
+	system_message = f"<|im_start|>system\n{SYSTEM_MESSAGE}\n<|im_end|>"
+	messages = [{"sender": "user", "text": doc_text}]
+	prompt = create_conversation_prompt(system_message, messages)
+	#print(f"Prompt:\n{prompt}")
+	response = openai.Completion.create(
+		engine=OPENAI_CHAT_DEPLOYMENT,
+		prompt=prompt,
+		temperature=0.7,
+		max_tokens=OPENAI_CHAT_DEPLOYMENT_OUTPUT_MAX_TOKEN_SIZE,
+		top_p=0.95,
+		frequency_penalty=0,
+		presence_penalty=0,
+		stop=['<|im_end|>']
+	)
+	return response['choices'][0]['text']
 
 # process text to extract spec structured output
 def process_text(specs_folder_name, spec_text_file_name):
