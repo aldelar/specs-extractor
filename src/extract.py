@@ -25,6 +25,58 @@ AZURE_FORM_RECOGNIZER_API_ENDPOINT = os.getenv("AZURE_FORM_RECOGNIZER_API_ENDPOI
 AZURE_FORM_RECOGNIZER_API_KEY = os.getenv("AZURE_FORM_RECOGNIZER_API_KEY")
 document_analysis_client = DocumentAnalysisClient(endpoint=AZURE_FORM_RECOGNIZER_API_ENDPOINT, credential=AzureKeyCredential(AZURE_FORM_RECOGNIZER_API_KEY))
 
+# defining a function to create the prompt
+def create_conversation_messages(system_file_name, document_specification_file_name, few_shots_file_name, user_content):
+	#
+	messages = []
+	
+	# read system message
+	with open(system_file_name, "r") as system_file:
+		system_content = system_file.read()
+	if document_specification_file_name is not None:
+		with open(document_specification_file_name, "r") as document_specification_file:
+			document_specification = document_specification_file.read()
+		system_content += document_specification
+	messages.append({ "role": "system", "content": system_content })
+
+	# read few_shots messages
+	if few_shots_file_name is not None:
+		with open(few_shots_file_name, "r") as few_shots_file:
+			few_shots_messages = [json.loads(line) for line in few_shots_file]
+		for few_shots_message in few_shots_messages:
+			messages.append(few_shots_message)
+
+	# add user message content
+	messages.append({ "role": "user", "content": user_content })
+
+	return messages
+
+# execute chat completion
+def execute_chat_completion(system_file_name, document_specification_file_name, few_shots_file_name, user_content):
+	# defining the user input and the system message
+	messages = create_conversation_messages(system_file_name, document_specification_file_name, few_shots_file_name, user_content)
+	# send prompt to OpenAI API and detect 429 error
+	execution_success = False
+	while not execution_success:
+		try:
+			response = openai.ChatCompletion.create(
+				engine=OPENAI_CHAT_DEPLOYMENT,
+				messages=messages,
+				temperature=0.7,
+				max_tokens=OPENAI_CHAT_DEPLOYMENT_OUTPUT_MAX_TOKEN_SIZE,
+				top_p=0.95,
+				frequency_penalty=0,
+				presence_penalty=0,
+				stop=None)
+			execution_success = True
+		except openai.error.RateLimitError as e:
+			print(f"  -> OpenAI API RPM Limit, sleeping for {30} seconds...")
+			print(f"  -> {e}")
+			time.sleep(30)
+	
+	return response.choices[0].message.content
+
+
 # process pdf to extract text:
 # - split docs into sub-docs
 # - detect metadata (header/footer/etc.) and remove from text
@@ -85,54 +137,29 @@ def process_pdf(documents_folder_name, document_pdf_file_name):
 					document_paragraphs_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
 			print(f"  -> content paragraphs detected: {len(document_content_paragraphs)}")
 
+			# generate headings candidates summary file
+			document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
+			document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
+			with open(document_sections_candidates_file_path, "w") as document_sections_candidates_file:
+				sections_candidates = 0
+				for paragraph in document_content_paragraphs:
+					l = len(paragraph['content'])
+					if 5 < l <= 50:
+						document_sections_candidates_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
+						sections_candidates += 1
+			print(f"  -> headings candidates detected: {sections_candidates}")
 
-# defining a function to create the prompt
-def create_conversation_messages(system_file_name, document_specification_file_name, few_shots_file_name, document_text):
-	#
-	messages = []
-	
-	# read system message
-	with open(system_file_name, "r") as system_file:
-		system_content = system_file.read()
-	with open(document_specification_file_name, "r") as document_specification_file:
-		document_specification = document_specification_file.read()
-	system_content += document_specification
-	messages.append({ "role": "system", "content": system_content })
-
-	# read few_shots messages
-	with open(few_shots_file_name, "r") as few_shots_file:
-		few_shots_messages = [json.loads(line) for line in few_shots_file]
-	for few_shots_message in few_shots_messages:
-		messages.append(few_shots_message)
-
-	# add document text to process
-	messages.append({ "role": "user", "content": document_text })
-
-	return messages
-
-# extract specs from doc
-def text_to_spec(document_text):
-	# defining the user input and the system message
-	messages = create_conversation_messages('prompts/document_type_A_system.txt', 'documents_formats/document_type_A.txt', 'prompts/document_type_A_few_shots.jsonl', document_text)
-	#print(f"Prompt:\n{prompt}")
-	
-	# send prompt to OpenAI API and detect 429 error
-	try:
-		response = openai.ChatCompletion.create(
-			engine=OPENAI_CHAT_DEPLOYMENT,
-			messages=messages,
-			temperature=0.7,
-			max_tokens=OPENAI_CHAT_DEPLOYMENT_OUTPUT_MAX_TOKEN_SIZE,
-			top_p=0.95,
-			frequency_penalty=0,
-			presence_penalty=0,
-			stop=None)
-	except openai.error.RateLimitError as e:
-		print(f"  -> OpenAI API RPM Limit, sleeping for {30} seconds...")
-		time.sleep(30)
-		return text_to_spec(document_text)
-	
-	return response.choices[0].message.content
+			# clean up headings candidates summary file
+			document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
+			document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
+			with open(document_sections_candidates_file_path, "r") as document_sections_candidates_file:
+				document_sections_candidates_txt = document_sections_candidates_file.read()
+			result = execute_chat_completion('prompts/sectionHeading_cleanser_system_2.txt', None, None, document_sections_candidates_txt)
+			document_sections_candidates_clean_file_name = document_pdf_file_name.replace(".pdf",".sections.tsv")
+			document_sections_candidates_clean_file_path = os.path.join(documents_folder_name,document_sections_candidates_clean_file_name)
+			with open(document_sections_candidates_clean_file_path, "w") as document_sections_candidates_clean_file:
+				print(f"result: {result}")
+				document_sections_candidates_clean_file.write(result.split('===SECTIONS===')[1])
 
 # process text to extract spec structured output
 def process_text(documents_folder_name, document_text_file_name):
@@ -148,7 +175,7 @@ def process_text(documents_folder_name, document_text_file_name):
 		chunks = text_utils.split_doc_text(document_text,OPENAI_CHAT_DEPLOYMENT_INPUT_MAX_TOKEN_SIZE)
 		for i,chunk in enumerate(chunks):
 			print(f"===\n  -> extracting spec from chunk {i+1}/{len(chunks)} ...\n===")
-			specs = text_to_spec(f"{chunk}")
+			specs = execute_chat_completion('prompts/document_type_A_system.txt', 'documents_formats/document_type_A.txt', 'prompts/document_type_A_few_shots.jsonl', chunk)
 			print(specs)
 			document_extract_file.write(specs)
 
@@ -164,6 +191,7 @@ if __name__ == '__main__':
 		process_pdf(documents_folder_name, document_pdf_file_name)
 	
 	# process text to extract structured spec output
-	document_text_file_names = [f for f in os.listdir(documents_folder_name) if f.endswith(".txt")]
-	for document_text_file_name in document_text_file_names:
-		process_text(documents_folder_name, document_text_file_name)
+	if False:
+		document_text_file_names = [f for f in os.listdir(documents_folder_name) if f.endswith(".txt")]
+		for document_text_file_name in document_text_file_names:
+			process_text(documents_folder_name, document_text_file_name)

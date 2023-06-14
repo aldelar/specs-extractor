@@ -1,8 +1,8 @@
 # specs folder
 documents
-documents_formats/*.txt
-prompts/*.jsonl
-prompts/*.txt
+#documents_formats/*.txt
+#prompts/*.jsonl
+#prompts/*.txt
 src/__pycache__/
 
 # Byte-compiled / optimized / DLL files
