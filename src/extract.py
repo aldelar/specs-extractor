@@ -212,7 +212,6 @@ if __name__ == '__main__':
 		process_pdf(documents_folder_name, document_pdf_file_name)
 	
 	# process text to extract structured spec output
-	if False:
-		document_text_file_names = [f for f in os.listdir(documents_folder_name) if f.endswith(".txt")]
-		for document_text_file_name in document_text_file_names:
-			process_text(documents_folder_name, document_text_file_name)
+	document_text_file_names = [f for f in os.listdir(documents_folder_name) if f.endswith(".txt")]
+	for document_text_file_name in document_text_file_names:
+		process_text(documents_folder_name, document_text_file_name)
