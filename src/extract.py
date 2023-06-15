@@ -70,8 +70,8 @@ def execute_chat_completion(system_file_name, document_specification_file_name, 
 				stop=None)
 			execution_success = True
 		except openai.error.RateLimitError as e:
-			print(f"  -> OpenAI API RPM Limit, sleeping for {30} seconds...")
-			print(f"  -> {e}")
+			print(f"  ** OpenAI API RPM Limit, sleeping for {30} seconds...")
+			#print(f"  ** {e}")
 			time.sleep(30)
 	
 	return response.choices[0].message.content
@@ -91,8 +91,8 @@ def process_pdf(documents_folder_name, document_pdf_file_name):
 	# - break down document into top level paragraphs
 	document_json_file_name = document_pdf_file_name.replace(".pdf",".json")
 	document_json_file_path = os.path.join(documents_folder_name,document_json_file_name)
+	print(f"===\nprocess_pdf({document_pdf_file_name})...")
 	if not os.path.exists(document_json_file_path):
-		print(f"===\nprocess_pdf({documents_folder_name},{document_pdf_file_name})...")
 		with open(document_pdf_file_path, "rb") as document_pdf_file:
 			document_pdf_bytes = document_pdf_file.read()
 			print(f"  -> using Azure Form Recognizer layout API to extract document structure and content...")
@@ -102,64 +102,70 @@ def process_pdf(documents_folder_name, document_pdf_file_name):
 			# dump full output of Form Recognizer to JSON file
 			with open(document_json_file_path, "w") as document_json_file:
 				json.dump(result.to_dict(), document_json_file)
-			
-			# extract all paragraphs from Form Recognizer output and track metadata vs content
-			document_metadata = set()
-			document_metadata_paragraphs = []
-			document_content_paragraphs = []
-			for paragraph in result.paragraphs:
-				if paragraph.role in ["title","pageFooter","pageHeader""pageNumber"]:
-					document_metadata_paragraphs.append({ "role": paragraph.role, "content": paragraph.content })
-					document_metadata.add(paragraph.content)
-				else:
-					document_content_paragraphs.append({ "role": paragraph.role, "content": paragraph.content })
-			document_metadata_file = document_pdf_file_name.replace(".pdf",".metadata.tsv")
-			document_metadata_file_path = os.path.join(documents_folder_name,document_metadata_file)
-			with open(document_metadata_file_path, "w") as document_metadata_file:
-				for document_metadata_paragraph in document_metadata_paragraphs:
-					document_metadata_file.write(f"{document_metadata_paragraph['role']}\t{document_metadata_paragraph['content']}\n")
 
-			# remove all items in the document_metadata set() from the text content and save clean content to txt
-			content = result.content
-			for metadata in document_metadata:
-				content = content.replace(metadata,"")
-			document_content_file_name = document_pdf_file_name.replace(".pdf",".txt")
-			document_content_file_path = os.path.join(documents_folder_name,document_content_file_name)
-			with open(document_content_file_path, "w") as document_content_file:
-				document_content_file.write(content)
-			print(f"  -> metadata items detected and removed from content: {len(document_metadata_paragraphs)}")
+	# load Form Recognizer output from JSON file
+	with open(document_json_file_path, "r") as document_json_file:
+		result = json.load(document_json_file)
 
-			# generate paragraph summary file
-			document_paragraphs_file_name = document_pdf_file_name.replace(".pdf",".paragraphs.tsv")
-			document_paragraphs_file_path = os.path.join(documents_folder_name,document_paragraphs_file_name)
-			with open(document_paragraphs_file_path, "w") as document_paragraphs_file:
-				for paragraph in document_content_paragraphs:
-					document_paragraphs_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
-			print(f"  -> content paragraphs detected: {len(document_content_paragraphs)}")
+	# extract all paragraphs from Form Recognizer output and track metadata vs content
+	document_metadata = set()
+	document_metadata_paragraphs = []
+	document_content_paragraphs = []
+	for paragraph in result['paragraphs']:
+		if paragraph['role'] in ["title","pageFooter","pageHeader""pageNumber"]:
+			document_metadata_paragraphs.append({ "role": paragraph['role'], "content": paragraph['content'] })
+			document_metadata.add(paragraph['content'])
+		else:
+			document_content_paragraphs.append({ "role": paragraph['role'], "content": paragraph['content'] })
+	document_metadata_file = document_pdf_file_name.replace(".pdf",".metadata.tsv")
+	document_metadata_file_path = os.path.join(documents_folder_name,document_metadata_file)
+	with open(document_metadata_file_path, "w") as document_metadata_file:
+		for document_metadata_paragraph in document_metadata_paragraphs:
+			document_metadata_file.write(f"{document_metadata_paragraph['role']}\t{document_metadata_paragraph['content']}\n")
 
-			# generate headings candidates summary file
-			document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
-			document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
-			with open(document_sections_candidates_file_path, "w") as document_sections_candidates_file:
-				sections_candidates = 0
-				for paragraph in document_content_paragraphs:
-					l = len(paragraph['content'])
-					if 5 < l <= 50:
-						document_sections_candidates_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
-						sections_candidates += 1
-			print(f"  -> headings candidates detected: {sections_candidates}")
+	# remove all items in the document_metadata set() from the text content and save clean content to txt
+	content = result['content']
+	for metadata in document_metadata:
+		content = content.replace(metadata,"")
+	document_content_file_name = document_pdf_file_name.replace(".pdf",".txt")
+	document_content_file_path = os.path.join(documents_folder_name,document_content_file_name)
+	with open(document_content_file_path, "w") as document_content_file:
+		document_content_file.write(content)
+	print(f"  -> metadata items detected and removed from content: {len(document_metadata_paragraphs)}")
 
-			# clean up headings candidates summary file
-			document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
-			document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
-			with open(document_sections_candidates_file_path, "r") as document_sections_candidates_file:
-				document_sections_candidates_txt = document_sections_candidates_file.read()
-			result = execute_chat_completion('prompts/sectionHeading_cleanser_system_2.txt', None, None, document_sections_candidates_txt)
-			document_sections_candidates_clean_file_name = document_pdf_file_name.replace(".pdf",".sections.tsv")
-			document_sections_candidates_clean_file_path = os.path.join(documents_folder_name,document_sections_candidates_clean_file_name)
-			with open(document_sections_candidates_clean_file_path, "w") as document_sections_candidates_clean_file:
-				print(f"result: {result}")
-				document_sections_candidates_clean_file.write(result.split('===SECTIONS===')[1])
+	# generate paragraph summary file
+	document_paragraphs_file_name = document_pdf_file_name.replace(".pdf",".paragraphs.tsv")
+	document_paragraphs_file_path = os.path.join(documents_folder_name,document_paragraphs_file_name)
+	with open(document_paragraphs_file_path, "w") as document_paragraphs_file:
+		for paragraph in document_content_paragraphs:
+			document_paragraphs_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
+	print(f"  -> content paragraphs detected: {len(document_content_paragraphs)}")
+
+	# generate headings candidates summary file
+	document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
+	document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
+	with open(document_sections_candidates_file_path, "w") as document_sections_candidates_file:
+		sections_candidates = 0
+		for paragraph in document_content_paragraphs:
+			l = len(paragraph['content'])
+			if 5 < l <= 50:
+				document_sections_candidates_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
+				sections_candidates += 1
+	print(f"  -> sections candidates detected: {sections_candidates}")
+
+	# clean up headings candidates summary file
+	document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
+	document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
+	with open(document_sections_candidates_file_path, "r") as document_sections_candidates_file:
+		document_sections_candidates_txt = document_sections_candidates_file.read()
+	completion_result = execute_chat_completion('prompts/sectionHeading_cleanser_system_2.txt', None, None, document_sections_candidates_txt)
+	document_sections_candidates_clean_file_name = document_pdf_file_name.replace(".pdf",".sections.tsv")
+	document_sections_candidates_clean_file_path = os.path.join(documents_folder_name,document_sections_candidates_clean_file_name)
+	with open(document_sections_candidates_clean_file_path, "w") as document_sections_candidates_clean_file:
+		sections = completion_result.split('===SECTIONS===\n')[1]
+		sections_count = sections.count('\n')
+		print(f"  -> sections detected: {sections_count}")
+		document_sections_candidates_clean_file.write(sections)
 
 # process text to extract spec structured output
 def process_text(documents_folder_name, document_text_file_name):
