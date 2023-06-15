@@ -111,18 +111,33 @@ def process_pdf(documents_folder_name, document_pdf_file_name):
 	document_metadata = set()
 	document_metadata_paragraphs = []
 	document_content_paragraphs = []
+	document_sections_candidates = []
 	for paragraph in result['paragraphs']:
-		if paragraph['role'] in ["title","pageFooter","pageHeader""pageNumber"]:
+		if paragraph['content'].lower().startswith("section "):
+			document_sections_candidates.append(paragraph['content'])
+		if paragraph['role'] in ["pageFooter","pageHeader","pageNumber"]:
 			document_metadata_paragraphs.append({ "role": paragraph['role'], "content": paragraph['content'] })
 			document_metadata.add(paragraph['content'])
 		else:
 			document_content_paragraphs.append({ "role": paragraph['role'], "content": paragraph['content'] })
+	
+	# metadata (pageHeader,pageFooter,pageNumber)
 	document_metadata_file = document_pdf_file_name.replace(".pdf",".metadata.tsv")
 	document_metadata_file_path = os.path.join(documents_folder_name,document_metadata_file)
 	with open(document_metadata_file_path, "w") as document_metadata_file:
 		for document_metadata_paragraph in document_metadata_paragraphs:
 			document_metadata_file.write(f"{document_metadata_paragraph['role']}\t{document_metadata_paragraph['content']}\n")
+	print(f"  -> metadata items detected: {len(document_metadata_paragraphs)}")
+	
+	# sections candidates
+	document_sections_candidates_file = document_pdf_file_name.replace(".pdf",".sections_candidates.txt")
+	document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file)
+	with open(document_sections_candidates_file_path, "w") as document_sections_candidates_file:
+		for document_sections_candidate in document_sections_candidates:
+			document_sections_candidates_file.write(f"{document_sections_candidate}\n")
+	print(f"  -> section candidates detected: {len(document_sections_candidates)}")
 
+	# content (everything else)
 	# remove all items in the document_metadata set() from the text content and save clean content to txt
 	content = result['content']
 	for metadata in document_metadata:
@@ -142,30 +157,30 @@ def process_pdf(documents_folder_name, document_pdf_file_name):
 	print(f"  -> content paragraphs detected: {len(document_content_paragraphs)}")
 
 	# generate headings candidates summary file
-	document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
-	document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
-	with open(document_sections_candidates_file_path, "w") as document_sections_candidates_file:
-		sections_candidates = 0
+	document_headers_candidates_file_name = document_pdf_file_name.replace(".pdf",".headers_candidates.tsv")
+	document_headers_candidates_file_path = os.path.join(documents_folder_name,document_headers_candidates_file_name)
+	with open(document_headers_candidates_file_path, "w") as document_headers_candidates_file:
+		headers_candidates = 0
 		for paragraph in document_content_paragraphs:
 			l = len(paragraph['content'])
 			if 5 < l <= 50:
-				document_sections_candidates_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
-				sections_candidates += 1
-	print(f"  -> sections candidates detected: {sections_candidates}")
+				document_headers_candidates_file.write(f"{paragraph['role']}\t{paragraph['content']}\n")
+				headers_candidates += 1
+	print(f"  -> headers candidates detected: {headers_candidates}")
 
 	# clean up headings candidates summary file
-	document_sections_candidates_file_name = document_pdf_file_name.replace(".pdf",".sections_candidates.tsv")
-	document_sections_candidates_file_path = os.path.join(documents_folder_name,document_sections_candidates_file_name)
-	with open(document_sections_candidates_file_path, "r") as document_sections_candidates_file:
-		document_sections_candidates_txt = document_sections_candidates_file.read()
-	completion_result = execute_chat_completion('prompts/sectionHeading_cleanser_system_2.txt', None, None, document_sections_candidates_txt)
-	document_sections_candidates_clean_file_name = document_pdf_file_name.replace(".pdf",".sections.tsv")
-	document_sections_candidates_clean_file_path = os.path.join(documents_folder_name,document_sections_candidates_clean_file_name)
-	with open(document_sections_candidates_clean_file_path, "w") as document_sections_candidates_clean_file:
-		sections = completion_result.split('===SECTIONS===\n')[1]
-		sections_count = sections.count('\n')
-		print(f"  -> sections detected: {sections_count}")
-		document_sections_candidates_clean_file.write(sections)
+	document_headers_candidates_file_name = document_pdf_file_name.replace(".pdf",".headers_candidates.tsv")
+	document_headers_candidates_file_path = os.path.join(documents_folder_name,document_headers_candidates_file_name)
+	with open(document_headers_candidates_file_path, "r") as document_headers_candidates_file:
+		document_headers_candidates_txt = document_headers_candidates_file.read()
+	completion_result = execute_chat_completion('prompts/sectionHeading_cleanser_system_3.txt', None, None, document_headers_candidates_txt)
+	document_headers_candidates_clean_file_name = document_pdf_file_name.replace(".pdf",".headers.tsv")
+	document_headers_candidates_clean_file_path = os.path.join(documents_folder_name,document_headers_candidates_clean_file_name)
+	with open(document_headers_candidates_clean_file_path, "w") as document_headers_candidates_clean_file:
+		sections = completion_result.split('===INDEX===\n')[1]
+		headers_count = sections.count('\n')
+		print(f"  -> headers detected: {headers_count}")
+		document_headers_candidates_clean_file.write(sections)
 
 # process text to extract spec structured output
 def process_text(documents_folder_name, document_text_file_name):
